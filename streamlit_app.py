@@ -169,7 +169,7 @@ with tabs[3]:
         with st.form("admin_login"):
             pin = st.text_input("Enter Admin PIN", type="password")
             if st.form_submit_button("Login"):
-                if pin == "Marvel@123":
+                if pin == st.secrets["admin"]["pin"]:
                     st.session_state.authenticated = True
                     st.rerun()
                 else:
