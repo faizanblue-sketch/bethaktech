@@ -139,7 +139,7 @@ with tabs[2]:
             bad_sel = st.multiselect("Select Players", options=all_users, key="bps")
         with c2:
             st.success("🍲 Food")
-            food_act = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other"], key="fa")
+            food_act = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Family Gathering"], key="fa")
             food_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="ft")
             food_sel = st.multiselect("Select Consumers", options=all_users, key="fps")
         
