@@ -1,3 +1,10 @@
+The "Quick Status" grid used a fixed 6-column layout with the exact positions mapped to a hardcoded `others` list, which caused new members to be left out.
+
+To make it fully dynamic without altering your design or breaking the metric layouts, we can dynamically slice `all_users` to exclude the static groups, and then dynamically generate columns based on how many individual members actually exist.
+
+Here is your updated code with that fix applied:
+
+```python
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
@@ -58,10 +65,13 @@ with tabs[0]:
         # Member Status Logic
         u_sums = unpaid_only.groupby('user_name')['amount'].sum().to_dict()
         ahmed_g, kashif_g = ['Ahmed', 'Arsalan', 'Kamran'], ['Kashif', 'Imran']
-        others = ['Shariq', 'Atiq', 'Midhat', 'Faizan']
+        
+        # FIXED: Automatically pull all individual members who aren't in the explicit groups
+        dynamic_others = [u for u in all_users if u not in ahmed_g and u not in kashif_g]
         
         st.write("### ⚡ Quick Status")
-        scols = st.columns(6)
+        # FIXED: Allocate columns dynamically based on the number of non-group users (+2 slots for Ahmed's and Kashif's groups)
+        scols = st.columns(2 + len(dynamic_others))
         
         # Ahmed's Group Status in Container
         with scols[0]:
@@ -79,8 +89,8 @@ with tabs[0]:
                 st.caption(f"{', '.join(kashif_g)}")
                 st.markdown(f"{'🔴' if amt_k > 0 else '🟢'} **{amt_k:.1f}**")
         
-        # Individual Members in Containers
-        for i, user in enumerate(others):
+        # Individual Members in Containers (Dynamically generated columns)
+        for i, user in enumerate(dynamic_others):
             with scols[i+2]:
                 with st.container(border=True):
                     amt_u = u_sums.get(user, 0)
@@ -97,8 +107,10 @@ with tabs[0]:
             temp_sums = unpaid_only.groupby('user_name')['amount'].sum().to_dict()
             bar_data.append({"Entity": "Ahmed's Group", "Amount": sum(temp_sums.get(m, 0) for m in ahmed_g)})
             bar_data.append({"Entity": "Kashif's Group", "Amount": sum(temp_sums.get(m, 0) for m in kashif_g)})
-            for u in others:
-                bar_data.append({"Entity": u, "Amount": temp_sums.get(u, 0)})
+            
+            for u in all_users:
+                if u not in ahmed_g and u not in kashif_g:
+                    bar_data.append({"Entity": u, "Amount": temp_sums.get(u, 0)})
             
             df_bar = pd.DataFrame(bar_data)
             fig_bar = px.bar(df_bar, x='Entity', y='Amount', title="Dues by Group/Member", color='Entity', text='Amount')
@@ -308,3 +320,5 @@ with tabs[4]:
         conn.query("SELECT 1", ttl=0)
         st.success("✅ Database: Connected")
     except Exception as e: st.error(f"❌ Disconnected: {e}")
+
+```
