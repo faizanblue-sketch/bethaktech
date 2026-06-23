@@ -1,10 +1,3 @@
-The "Quick Status" grid used a fixed 6-column layout with the exact positions mapped to a hardcoded `others` list, which caused new members to be left out.
-
-To make it fully dynamic without altering your design or breaking the metric layouts, we can dynamically slice `all_users` to exclude the static groups, and then dynamically generate columns based on how many individual members actually exist.
-
-Here is your updated code with that fix applied:
-
-```python
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
@@ -66,11 +59,11 @@ with tabs[0]:
         u_sums = unpaid_only.groupby('user_name')['amount'].sum().to_dict()
         ahmed_g, kashif_g = ['Ahmed', 'Arsalan', 'Kamran'], ['Kashif', 'Imran']
         
-        # FIXED: Automatically pull all individual members who aren't in the explicit groups
+        # Dynamically determine individual members who aren't in the static groups
         dynamic_others = [u for u in all_users if u not in ahmed_g and u not in kashif_g]
         
         st.write("### ⚡ Quick Status")
-        # FIXED: Allocate columns dynamically based on the number of non-group users (+2 slots for Ahmed's and Kashif's groups)
+        # Generate columns dynamically based on the current number of non-group users
         scols = st.columns(2 + len(dynamic_others))
         
         # Ahmed's Group Status in Container
@@ -89,7 +82,7 @@ with tabs[0]:
                 st.caption(f"{', '.join(kashif_g)}")
                 st.markdown(f"{'🔴' if amt_k > 0 else '🟢'} **{amt_k:.1f}**")
         
-        # Individual Members in Containers (Dynamically generated columns)
+        # Individual Members in Containers (Dynamically generated columns layout)
         for i, user in enumerate(dynamic_others):
             with scols[i+2]:
                 with st.container(border=True):
@@ -108,6 +101,7 @@ with tabs[0]:
             bar_data.append({"Entity": "Ahmed's Group", "Amount": sum(temp_sums.get(m, 0) for m in ahmed_g)})
             bar_data.append({"Entity": "Kashif's Group", "Amount": sum(temp_sums.get(m, 0) for m in kashif_g)})
             
+            # Dynamically capture all dynamic individual members into the chart
             for u in all_users:
                 if u not in ahmed_g and u not in kashif_g:
                     bar_data.append({"Entity": u, "Amount": temp_sums.get(u, 0)})
@@ -320,5 +314,3 @@ with tabs[4]:
         conn.query("SELECT 1", ttl=0)
         st.success("✅ Database: Connected")
     except Exception as e: st.error(f"❌ Disconnected: {e}")
-
-```
