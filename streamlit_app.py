@@ -272,7 +272,7 @@ with tabs[3]:
                             st.metric("Balance", f"{ent['amt']:.2f} QAR")
                             if st.button(f"Settle", key=f"adm_grp_set_{ent['name']}", use_container_width=True):
                                 with conn.session as session:
-                                    session.execute(text("UPDATE expenses SET paid_status = 1 WHERE user_name IN :ids AND paid_status = 0"), {"ids": tuple(ent['ids'])})
+                                    session.execute(text("UPDATE expenses SET paid_status = 1 WHERE user_name IN (:ids) AND paid_status = 0"),{"ids": tuple(ent['ids'])})
                                     session.commit()
                                 st.rerun()
 
