@@ -140,29 +140,16 @@ with tabs[2]:
         c1, c2 = st.columns(2)
         with c1:
             st.info("🏸 Badminton")
-            bad_act_option = st.selectbox("Activity", ["Marvel Court Fee", "Shuttles", "Other (Custom)"], key="ba")
-            bad_act_custom = st.text_input("Manual Entry for Badminton Activity", key="ba_custom_input", help="Used when 'Other (Custom)' is selected")
+            bad_act = st.selectbox("Activity", ["Marvel Court Fee", "Shuttles"], key="ba")
             bad_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="bt")
             bad_sel = st.multiselect("Select Players", options=all_users, key="bps")
         with c2:
             st.success("🍲 Food")
-            food_act_option = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering", "Other (Custom)"], key="fa")
-            food_act_custom = st.text_input("Manual Entry for Food Activity", key="fa_custom_input", help="Used when 'Other (Custom)' is selected")
+            food_act = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering"], key="fa")
             food_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="ft")
             food_sel = st.multiselect("Select Consumers", options=all_users, key="fps")
         
         if st.form_submit_button("Submit"):
-            # Resolve custom activity names if selected
-            if bad_act_option == "Other (Custom)":
-                bad_act = bad_act_custom.strip() if bad_act_custom.strip() else "Custom Badminton"
-            else:
-                bad_act = bad_act_option
-
-            if food_act_option == "Other (Custom)":
-                food_act = food_act_custom.strip() if food_act_custom.strip() else "Custom Food"
-            else:
-                food_act = food_act_option
-
             entries = []
             if bad_sel and bad_total > 0:
                 share = bad_total / len(bad_sel)
