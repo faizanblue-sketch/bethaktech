@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 import plotly.express as px
 from datetime import date
 
@@ -94,7 +94,12 @@ with tabs[0]:
         st.divider()
         g1, g2 = st.columns([1, 2])
         with g1:
-            st.plotly_chart(px.pie(unpaid_only, values='amount', names='category', hole=0.5, title="Expense Split"), use_container_width=True)
+            if not unpaid_only.empty and unpaid_only['amount'].sum() > 0:
+                fig_pie = px.pie(unpaid_only, values='amount', names='category', hole=0.4, title="Expense Split")
+                fig_pie.update_layout(height=380, margin=dict(l=20, r=20, t=40, b=20))
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("No unpaid expenses to display in pie chart.")
         with g2:
             bar_data = []
             temp_sums = unpaid_only.groupby('user_name')['amount'].sum().to_dict()
@@ -109,6 +114,7 @@ with tabs[0]:
             df_bar = pd.DataFrame(bar_data)
             fig_bar = px.bar(df_bar, x='Entity', y='Amount', title="Dues by Group/Member", color='Entity', text='Amount')
             fig_bar.update_traces(texttemplate='<b>%{text:.1f}</b>', textposition='outside')
+            fig_bar.update_layout(height=380, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig_bar, use_container_width=True)
 
         # --- INDIVIDUAL BREAKUP TABLE CODE ---
@@ -140,12 +146,22 @@ with tabs[2]:
         c1, c2 = st.columns(2)
         with c1:
             st.info("🏸 Badminton")
-            bad_act = st.selectbox("Activity", ["Marvel Court Fee", "Shuttles", "Other"], key="ba")
+            bad_act_option = st.selectbox("Activity", ["Marvel Court Fee", "Shuttles", "Other (Custom)"], key="ba")
+            if bad_act_option == "Other (Custom)":
+                bad_act_custom = st.text_input("Enter Custom Badminton Activity Name", key="ba_custom")
+                bad_act = bad_act_custom.strip() if bad_act_custom else "Custom Activity"
+            else:
+                bad_act = bad_act_option
             bad_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="bt")
             bad_sel = st.multiselect("Select Players", options=all_users, key="bps")
         with c2:
             st.success("🍲 Food")
-            food_act = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering"], key="fa")
+            food_act_option = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Lala Dabar", "Cake Castle", "Family Gathering", "Other (Custom)"], key="fa")
+            if food_act_option == "Other (Custom)":
+                food_act_custom = st.text_input("Enter Custom Food Activity Name", key="fa_custom")
+                food_act = food_act_custom.strip() if food_act_custom else "Custom Activity"
+            else:
+                food_act = food_act_option
             food_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="ft")
             food_sel = st.multiselect("Select Consumers", options=all_users, key="fps")
         
@@ -272,7 +288,8 @@ with tabs[3]:
                             st.metric("Balance", f"{ent['amt']:.2f} QAR")
                             if st.button(f"Settle", key=f"adm_grp_set_{ent['name']}", use_container_width=True):
                                 with conn.session as session:
-                                    session.execute(text("UPDATE expenses SET paid_status = 1 WHERE user_name IN (:ids) AND paid_status = 0"),{"ids": tuple(ent['ids'])})
+                                    stmt = text("UPDATE expenses SET paid_status = 1 WHERE user_name IN :ids AND paid_status = 0").bindparams(bindparam('ids', expanding=True))
+                                    session.execute(stmt, {"ids": ent['ids']})
                                     session.commit()
                                 st.rerun()
 
@@ -309,8 +326,54 @@ with tabs[3]:
 
 # --- TAB 5: HEALTH ---
 with tabs[4]:
-    st.header("🔌 System Health")
+    st.header("🔌 System Health Check")
+    st.caption("Validates database connections, schema constraints, transaction flow, and data integrity.")
+    
+    # 1. Database Connectivity
     try:
-        conn.query("SELECT 1", ttl=0)
-        st.success("✅ Database: Connected")
-    except Exception as e: st.error(f"❌ Disconnected: {e}")
+        conn.query("SELECT 1;", ttl=0)
+        st.success("✅ Database Connection: Operational")
+    except Exception as e:
+        st.error(f"❌ Database Connection Failure: {e}")
+
+    # 2. Schema Structure Verification
+    required_tables = ['expenses', 'participants']
+    required_expense_cols = {'entry_date', 'user_name', 'category', 'activity', 'amount', 'paid_status'}
+    
+    try:
+        exp_schema = conn.query("SELECT * FROM expenses LIMIT 1;", ttl=0)
+        missing_cols = required_expense_cols - set(exp_schema.columns)
+        if not missing_cols:
+            st.success("✅ Table Schema ('expenses'): Valid")
+        else:
+            st.warning(f"⚠️ Table Schema ('expenses'): Missing columns {missing_cols}")
+    except Exception as e:
+        st.error(f"❌ Table Schema Error ('expenses'): {e}")
+
+    try:
+        conn.query("SELECT * FROM participants LIMIT 1;", ttl=0)
+        st.success("✅ Table Schema ('participants'): Valid")
+    except Exception as e:
+        st.error(f"❌ Table Schema Error ('participants'): {e}")
+
+    # 3. Transaction Write / Rollback Test
+    try:
+        with conn.session as session:
+            session.execute(text("CREATE TEMP TABLE health_check_test (id INT);"))
+            session.execute(text("INSERT INTO health_check_test VALUES (1);"))
+            session.rollback()
+        st.success("✅ Transaction Pipeline: Write & Rollback Operational")
+    except Exception as e:
+        st.error(f"❌ Transaction Pipeline Error: {e}")
+
+    # 4. Data Flow & Type Health
+    if not df_expenses.empty:
+        corrupted_amounts = df_expenses['amount'].isna().sum()
+        corrupted_status = (~df_expenses['paid_status'].isin([0, 1])).sum()
+        
+        if corrupted_amounts == 0 and corrupted_status == 0:
+            st.success(f"✅ Data Flow Integrity: Clean ({len(df_expenses)} records parsed successfully)")
+        else:
+            st.warning(f"⚠️ Data Integrity Issue: {corrupted_amounts} invalid amounts, {corrupted_status} invalid statuses detected.")
+    else:
+        st.info("ℹ️ Data Flow Integrity: No records present in 'expenses' table.")
