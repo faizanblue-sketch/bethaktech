@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import date
 
 # --- 1. APP SETUP ---
-st.set_page_config(page_title="Badminton & Food Tracker", layout="wide")
+st.set_page_config(page_title="Sports & Food Tracker", layout="wide")
 
 # --- 2. DATABASE CONNECTION ---
 conn = st.connection("postgresql", type="sql")
@@ -45,10 +45,10 @@ saved_participants = load_participants()
 all_users = sorted(list(set(saved_participants + (df_expenses['user_name'].unique().tolist() if not df_expenses.empty else []))))
 
 # Default activities if table is not yet configured
-default_badminton = ["Marvel Court Fee", "Shuttles"]
+default_sports = ["Marvel Court Fee", "Shuttles"]
 default_food = ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering"]
 
-badminton_activities = load_activities("Badminton", default_badminton)
+sports_activities = load_activities("Sports", default_sports)
 food_activities = load_activities("Food", default_food)
 
 # --- 4. TABS ---
@@ -56,7 +56,7 @@ tabs = st.tabs([
     "📊 Group Summary", 
     "📋 Daily Ledger", 
     "📥 New Entry", 
-    "🛠️ Admin Control",
+    "🛠️️ Admin Control",
     "🔌 System Health"
 ])
 
@@ -127,7 +127,7 @@ with tabs[0]:
         user_daily_totals['display'] = user_daily_totals.apply(lambda x: f"{x['amount']:.1f}{'✅' if x['paid_status'] == 1 else '❌'}", axis=1)
         pivot = user_daily_totals.pivot(index='entry_date', columns='user_name', values='display').fillna("-")
         cat_totals = df_piv.groupby(['entry_date', 'category'])['amount'].sum().unstack(fill_value=0)
-        for cat in ['Badminton', 'Food', 'Credit']:
+        for cat in ['Sports', 'Food', 'Credit']:
             pivot[f"Σ {cat}"] = cat_totals[cat].map("{:.1f}".format) if cat in cat_totals.columns else "0.0"
         pivot['TOTAL DAY'] = df_piv.groupby('entry_date')['amount'].sum().map("{:.1f}".format)
         st.dataframe(pivot.sort_index(ascending=False), use_container_width=True)
@@ -148,10 +148,10 @@ with tabs[2]:
         event_date = st.date_input("Event Date", value=date.today())
         c1, c2 = st.columns(2)
         with c1:
-            st.info("🏸 Badminton")
-            bad_act = st.selectbox("Activity", badminton_activities, key="ba")
-            bad_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="bt")
-            bad_sel = st.multiselect("Select Players", options=all_users, key="bps")
+            st.info("⚽ Sports")
+            sports_act = st.selectbox("Activity", sports_activities, key="sa")
+            sports_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="st")
+            sports_sel = st.multiselect("Select Players", options=all_users, key="sps")
         with c2:
             st.success("🍲 Food")
             food_act = st.selectbox("Activity", food_activities, key="fa")
@@ -160,9 +160,9 @@ with tabs[2]:
         
         if st.form_submit_button("Submit"):
             entries = []
-            if bad_sel and bad_total > 0:
-                share = bad_total / len(bad_sel)
-                for p in bad_sel: entries.append({"d":str(event_date),"u":p,"c":"Badminton","a":bad_act,"am":share,"p":0})
+            if sports_sel and sports_total > 0:
+                share = sports_total / len(sports_sel)
+                for p in sports_sel: entries.append({"d":str(event_date),"u":p,"c":"Sports","a":sports_act,"am":share,"p":0})
             if food_sel and food_total > 0:
                 share = food_total / len(food_sel)
                 for p in food_sel: entries.append({"d":str(event_date),"u":p,"c":"Food","a":food_act,"am":share,"p":0})
@@ -261,37 +261,37 @@ with tabs[3]:
 
             col_cat1, col_cat2 = st.columns(2)
 
-            # --- Badminton Activities Management ---
+            # --- Sports Activities Management ---
             with col_cat1:
                 with st.container(border=True):
-                    st.markdown("### 🏸 Badminton Activities")
+                    st.markdown("### ⚽ Sports Activities")
                     
-                    with st.form("add_badminton_act", clear_on_submit=True):
-                        new_bad_act = st.text_input("New Badminton Activity")
+                    with st.form("add_sports_act", clear_on_submit=True):
+                        new_sports_act = st.text_input("New Sports Activity")
                         if st.form_submit_button("Add Activity"):
-                            if new_bad_act.strip():
+                            if new_sports_act.strip():
                                 try:
                                     with conn.session as session:
                                         session.execute(
-                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Badminton', :act) ON CONFLICT DO NOTHING;"),
-                                            {"act": new_bad_act.strip()}
+                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Sports', :act) ON CONFLICT DO NOTHING;"),
+                                            {"act": new_sports_act.strip()}
                                         )
                                         session.commit()
-                                    st.success(f"Added '{new_bad_act.strip()}'")
+                                    st.success(f"Added '{new_sports_act.strip()}'")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error: {e}")
                     
                     st.write("---")
                     st.markdown("**Existing Activities:**")
-                    for act in badminton_activities:
+                    for act in sports_activities:
                         a_col1, a_col2 = st.columns([3, 1])
                         a_col1.write(f"• {act}")
-                        if a_col2.button("🗑️", key=f"del_bad_{act}"):
+                        if a_col2.button("🗑️", key=f"del_sports_{act}"):
                             try:
                                 with conn.session as session:
                                     session.execute(
-                                        text("DELETE FROM category_activities WHERE category = 'Badminton' AND activity_name = :act;"),
+                                        text("DELETE FROM category_activities WHERE category = 'Sports' AND activity_name = :act;"),
                                         {"act": act}
                                     )
                                     session.commit()
