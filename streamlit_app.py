@@ -146,29 +146,73 @@ with tabs[0]:
                     st.markdown(f"{'🔴' if amt_u > 0 else '🟢'} **{amt_u:.1f}**")
 
         st.divider()
-        g1, g2 = st.columns([1, 2])
-        with g1:
-            fig_pie = px.pie(unpaid_only, values='amount', names='category', hole=0.5, title="Expense Split")
-            fig_pie.update_layout(
-                margin=dict(l=20, r=20, t=50, b=20),
-                autosize=True
-            )
-            fig_pie.update_traces(automargin=True)
-            st.plotly_chart(fig_pie, use_container_width=True)
-        with g2:
-            bar_data = []
-            temp_sums = unpaid_only.groupby('user_name')['amount'].sum().to_dict()
-            bar_data.append({"Entity": "Ahmed's Group", "Amount": sum(temp_sums.get(m, 0) for m in ahmed_g)})
-            bar_data.append({"Entity": "Kashif's Group", "Amount": sum(temp_sums.get(m, 0) for m in kashif_g)})
-            
-            for u in all_users:
-                if u not in ahmed_g and u not in kashif_g:
-                    bar_data.append({"Entity": u, "Amount": temp_sums.get(u, 0)})
-            
-            df_bar = pd.DataFrame(bar_data)
-            fig_bar = px.bar(df_bar, x='Entity', y='Amount', title="Dues by Group/Member", color='Entity', text='Amount')
-            fig_bar.update_traces(texttemplate='<b>%{text:.1f}</b>', textposition='outside')
-            st.plotly_chart(fig_bar, use_container_width=True)
+       import plotly.graph_objects as go
+
+# --- Dual Donut Chart Replacement ---
+# Ensure df_bar contains your existing calculated user/group balances
+if not df_bar.empty and df_bar['Amount'].sum() > 0:
+    total_dues = df_bar['Amount'].sum()
+    
+    # Inner Ring Data (Values in QAR)
+    inner_labels = df_bar['Entity'].tolist()
+    inner_values = df_bar['Amount'].tolist()
+    
+    # Outer Ring Data (Percentages per Entity)
+    outer_labels = [f"{entity} (%)" for entity in inner_labels]
+    outer_values = [(val / total_dues) * 100 for val in inner_values]
+    
+    # Color palette matching inner and outer rings
+    colors_inner = ['#2B5C8F', '#D9534F', '#409093', '#F0AD4E', '#5CB85C']
+    colors_outer = ['#5B86E5', '#FF7675', '#64C5B1', '#FFC048', '#88D8B0']
+
+    fig_dual = go.Figure()
+
+    # 1. Inner Ring: Entity Amounts (QAR)
+    fig_dual.add_trace(go.Pie(
+        labels=inner_labels,
+        values=inner_values,
+        hole=0.45,
+        domain=dict(x=[0.15, 0.85], y=[0.15, 0.85]),
+        textinfo='label+value',
+        texttemplate='<b>%{label}</b><br>%{value:.1f} QAR',
+        hoverinfo='label+value',
+        marker=dict(colors=colors_inner, line=dict(color='#FFFFFF', width=2)),
+        name="Amount (QAR)",
+        sort=False
+    ))
+
+    # 2. Outer Ring: Percentage Breakdown (%)
+    fig_dual.add_trace(go.Pie(
+        labels=outer_labels,
+        values=outer_values,
+        hole=0.72,
+        domain=dict(x=[0, 1], y=[0, 1]),
+        textinfo='label+percent',
+        texttemplate='%{percent:.1%}',
+        textposition='outside',
+        hoverinfo='label+percent',
+        marker=dict(colors=colors_outer, line=dict(color='#FFFFFF', width=2)),
+        name="Share (%)",
+        sort=False
+    ))
+
+    # Layout styling with summary in center hole
+    fig_dual.update_layout(
+        title=dict(
+            text="<b>Dues Breakdown: Inner (QAR) vs Outer (%)</b>",
+            x=0.5,
+            xanchor='center'
+        ),
+        showlegend=True,
+        annotations=[dict(
+            text=f"<b>Total</b><br>{total_dues:.1f} QAR",
+            x=0.5, y=0.5,
+            font_size=15,
+            showarrow=False
+        )],
+        margin=dict(l=20, r=20, t=60, b=20),
+        height=500
+    )
 
         st.write("### 🗓️ Individual Breakup Table")
         df_piv = df_expenses.copy()
