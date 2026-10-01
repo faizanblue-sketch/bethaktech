@@ -56,7 +56,7 @@ tabs = st.tabs([
     "📊 Group Summary", 
     "📋 Daily Ledger", 
     "📥 New Entry", 
-    "🛠️️ Admin Control",
+    "🛠️ Admin Control",
     "🔌 System Health"
 ])
 
@@ -252,7 +252,8 @@ with tabs[3]:
                         CREATE TABLE IF NOT EXISTS category_activities (
                             id SERIAL PRIMARY KEY,
                             category VARCHAR(50) NOT NULL,
-                            activity_name VARCHAR(100) NOT NULL UNIQUE
+                            activity_name VARCHAR(100) NOT NULL,
+                            CONSTRAINT unique_category_activity UNIQUE (category, activity_name)
                         );
                     """))
                     session.commit()
@@ -269,25 +270,26 @@ with tabs[3]:
                     with st.form("add_sports_act", clear_on_submit=True):
                         new_sports_act = st.text_input("New Sports Activity")
                         if st.form_submit_button("Add Activity"):
-                            if new_sports_act.strip():
+                            act_clean = new_sports_act.strip()
+                            if act_clean:
                                 try:
                                     with conn.session as session:
                                         session.execute(
-                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Sports', :act) ON CONFLICT DO NOTHING;"),
-                                            {"act": new_sports_act.strip()}
+                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Sports', :act) ON CONFLICT (category, activity_name) DO NOTHING;"),
+                                            {"act": act_clean}
                                         )
                                         session.commit()
-                                    st.success(f"Added '{new_sports_act.strip()}'")
+                                    st.success(f"Added '{act_clean}'")
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
+                                    st.error(f"Error adding activity: {e}")
                     
                     st.write("---")
                     st.markdown("**Existing Activities:**")
-                    for act in sports_activities:
+                    for idx, act in enumerate(sports_activities):
                         a_col1, a_col2 = st.columns([3, 1])
                         a_col1.write(f"• {act}")
-                        if a_col2.button("🗑️", key=f"del_sports_{act}"):
+                        if a_col2.button("🗑️", key=f"del_sports_{idx}_{act}"):
                             try:
                                 with conn.session as session:
                                     session.execute(
@@ -307,25 +309,26 @@ with tabs[3]:
                     with st.form("add_food_act", clear_on_submit=True):
                         new_food_act = st.text_input("New Food Activity")
                         if st.form_submit_button("Add Activity"):
-                            if new_food_act.strip():
+                            act_clean = new_food_act.strip()
+                            if act_clean:
                                 try:
                                     with conn.session as session:
                                         session.execute(
-                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Food', :act) ON CONFLICT DO NOTHING;"),
-                                            {"act": new_food_act.strip()}
+                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Food', :act) ON CONFLICT (category, activity_name) DO NOTHING;"),
+                                            {"act": act_clean}
                                         )
                                         session.commit()
-                                    st.success(f"Added '{new_food_act.strip()}'")
+                                    st.success(f"Added '{act_clean}'")
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
+                                    st.error(f"Error adding activity: {e}")
 
                     st.write("---")
                     st.markdown("**Existing Activities:**")
-                    for act in food_activities:
+                    for idx, act in enumerate(food_activities):
                         f_col1, f_col2 = st.columns([3, 1])
                         f_col1.write(f"• {act}")
-                        if f_col2.button("🗑️", key=f"del_food_{act}"):
+                        if f_col2.button("🗑️", key=f"del_food_{idx}_{act}"):
                             try:
                                 with conn.session as session:
                                     session.execute(
