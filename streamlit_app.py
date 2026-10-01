@@ -146,11 +146,11 @@ with tabs[0]:
                     st.markdown(f"{'🔴' if amt_u > 0 else '🟢'} **{amt_u:.1f}**")
 
         st.divider()
-       import plotly.graph_objects as go
+      # Replace line 149 and surrounding block in streamlit_app.py:
 
-# --- Dual Donut Chart Replacement ---
-# Ensure df_bar contains your existing calculated user/group balances
 if not df_bar.empty and df_bar['Amount'].sum() > 0:
+    import plotly.graph_objects as go  # Correctly indented (4 spaces)
+    
     total_dues = df_bar['Amount'].sum()
     
     # Inner Ring Data (Values in QAR)
@@ -213,6 +213,10 @@ if not df_bar.empty and df_bar['Amount'].sum() > 0:
         margin=dict(l=20, r=20, t=60, b=20),
         height=500
     )
+
+    st.plotly_chart(fig_dual, use_container_width=True)
+else:
+    st.info("No unpaid dues available to display.")
 
         st.write("### 🗓️ Individual Breakup Table")
         df_piv = df_expenses.copy()
