@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import text, bindparam
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import date
 
 # --- 1. APP SETUP ---
@@ -40,7 +41,7 @@ tabs = st.tabs([
     "📊 Group Summary", 
     "📋 Daily Ledger", 
     "📥 New Entry", 
-    "🛠️ Admin Control",
+    "🛠️️ Admin Control",
     "🔌 System Health"
 ])
 
@@ -95,8 +96,26 @@ with tabs[0]:
         g1, g2 = st.columns([1, 2])
         with g1:
             if not unpaid_only.empty and unpaid_only['amount'].sum() > 0:
-                fig_pie = px.pie(unpaid_only, values='amount', names='category', hole=0.4, title="Expense Split")
-                fig_pie.update_layout(height=380, margin=dict(l=20, r=20, t=40, b=20))
+                cat_summary = unpaid_only.groupby('category')['amount'].sum().reset_index()
+                
+                fig_pie = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=cat_summary['category'],
+                            values=cat_summary['amount'],
+                            hole=0.4,
+                            textinfo='label+percent',
+                            insidetextorientation='radial'
+                        )
+                    ]
+                )
+                fig_pie.update_layout(
+                    title_text="Expense Split",
+                    height=380,
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    showlegend=True,
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
+                )
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
                 st.info("No unpaid expenses to display in pie chart.")
@@ -147,25 +166,28 @@ with tabs[2]:
         with c1:
             st.info("🏸 Badminton")
             bad_act_option = st.selectbox("Activity", ["Marvel Court Fee", "Shuttles", "Other (Custom)"], key="ba")
-            if bad_act_option == "Other (Custom)":
-                bad_act_custom = st.text_input("Enter Custom Badminton Activity Name", key="ba_custom")
-                bad_act = bad_act_custom.strip() if bad_act_custom else "Custom Activity"
-            else:
-                bad_act = bad_act_option
+            bad_act_custom = st.text_input("Manual Entry for Badminton Activity", key="ba_custom_input", help="Used when 'Other (Custom)' is selected")
             bad_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="bt")
             bad_sel = st.multiselect("Select Players", options=all_users, key="bps")
         with c2:
             st.success("🍲 Food")
             food_act_option = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Lala Dabar", "Cake Castle", "Family Gathering", "Other (Custom)"], key="fa")
-            if food_act_option == "Other (Custom)":
-                food_act_custom = st.text_input("Enter Custom Food Activity Name", key="fa_custom")
-                food_act = food_act_custom.strip() if food_act_custom else "Custom Activity"
-            else:
-                food_act = food_act_option
+            food_act_custom = st.text_input("Manual Entry for Food Activity", key="fa_custom_input", help="Used when 'Other (Custom)' is selected")
             food_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="ft")
             food_sel = st.multiselect("Select Consumers", options=all_users, key="fps")
         
         if st.form_submit_button("Submit"):
+            # Resolve custom activity names if selected
+            if bad_act_option == "Other (Custom)":
+                bad_act = bad_act_custom.strip() if bad_act_custom.strip() else "Custom Badminton"
+            else:
+                bad_act = bad_act_option
+
+            if food_act_option == "Other (Custom)":
+                food_act = food_act_custom.strip() if food_act_custom.strip() else "Custom Food"
+            else:
+                food_act = food_act_option
+
             entries = []
             if bad_sel and bad_total > 0:
                 share = bad_total / len(bad_sel)
@@ -307,7 +329,7 @@ with tabs[3]:
                 for p in saved_participants:
                     c_p1, c_p2 = st.columns([3, 1])
                     c_p1.write(f"👤 {p}")
-                    if c_p2.button("🗑️", key=f"adm_du_{p}"):
+                    if c_p2.button("🗑️️", key=f"adm_du_{p}"):
                         with conn.session as session:
                             session.execute(text("DELETE FROM participants WHERE name = :n"), {"n": p})
                             session.commit()
@@ -337,7 +359,6 @@ with tabs[4]:
         st.error(f"❌ Database Connection Failure: {e}")
 
     # 2. Schema Structure Verification
-    required_tables = ['expenses', 'participants']
     required_expense_cols = {'entry_date', 'user_name', 'category', 'activity', 'amount', 'paid_status'}
     
     try:
