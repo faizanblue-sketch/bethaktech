@@ -10,7 +10,7 @@ st.set_page_config(page_title="Badminton & Food Tracker", layout="wide")
 # --- 2. DATABASE CONNECTION ---
 conn = st.connection("postgresql", type="sql")
 
-# --- 3. DATA LOADING ---
+# --- 3. DATA LOADING & INITIALIZATION ---
 @st.cache_data(ttl=0)
 def load_expense_data():
     try:
@@ -31,9 +31,25 @@ def load_participants():
     except:
         return []
 
+def load_activities(category_name, default_list):
+    try:
+        df_act = conn.query("SELECT activity_name FROM category_activities WHERE category = :cat ORDER BY activity_name ASC;", params={"cat": category_name}, ttl=0)
+        if not df_act.empty:
+            return df_act['activity_name'].tolist()
+        return default_list
+    except Exception:
+        return default_list
+
 df_expenses = load_expense_data()
 saved_participants = load_participants()
 all_users = sorted(list(set(saved_participants + (df_expenses['user_name'].unique().tolist() if not df_expenses.empty else []))))
+
+# Default activities if table is not yet configured
+default_badminton = ["Marvel Court Fee", "Shuttles"]
+default_food = ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering"]
+
+badminton_activities = load_activities("Badminton", default_badminton)
+food_activities = load_activities("Food", default_food)
 
 # --- 4. TABS ---
 tabs = st.tabs([
@@ -59,14 +75,11 @@ with tabs[0]:
         u_sums = unpaid_only.groupby('user_name')['amount'].sum().to_dict()
         ahmed_g, kashif_g = ['Ahmed', 'Arsalan', 'Kamran'], ['Kashif', 'Imran']
         
-        # Dynamically determine individual members who aren't in the static groups
         dynamic_others = [u for u in all_users if u not in ahmed_g and u not in kashif_g]
         
         st.write("### ⚡ Quick Status")
-        # Generate columns dynamically based on the current number of non-group users
         scols = st.columns(2 + len(dynamic_others))
         
-        # Ahmed's Group Status in Container
         with scols[0]:
             with st.container(border=True):
                 amt_a = sum(u_sums.get(m, 0) for m in ahmed_g)
@@ -74,7 +87,6 @@ with tabs[0]:
                 st.caption(f"{', '.join(ahmed_g)}")
                 st.markdown(f"{'🔴' if amt_a > 0 else '🟢'} **{amt_a:.1f}**")
         
-        # Kashif's Group Status in Container
         with scols[1]:
             with st.container(border=True):
                 amt_k = sum(u_sums.get(m, 0) for m in kashif_g)
@@ -82,7 +94,6 @@ with tabs[0]:
                 st.caption(f"{', '.join(kashif_g)}")
                 st.markdown(f"{'🔴' if amt_k > 0 else '🟢'} **{amt_k:.1f}**")
         
-        # Individual Members in Containers (Dynamically generated columns layout)
         for i, user in enumerate(dynamic_others):
             with scols[i+2]:
                 with st.container(border=True):
@@ -101,7 +112,6 @@ with tabs[0]:
             bar_data.append({"Entity": "Ahmed's Group", "Amount": sum(temp_sums.get(m, 0) for m in ahmed_g)})
             bar_data.append({"Entity": "Kashif's Group", "Amount": sum(temp_sums.get(m, 0) for m in kashif_g)})
             
-            # Dynamically capture all dynamic individual members into the chart
             for u in all_users:
                 if u not in ahmed_g and u not in kashif_g:
                     bar_data.append({"Entity": u, "Amount": temp_sums.get(u, 0)})
@@ -111,7 +121,6 @@ with tabs[0]:
             fig_bar.update_traces(texttemplate='<b>%{text:.1f}</b>', textposition='outside')
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        # --- INDIVIDUAL BREAKUP TABLE CODE ---
         st.write("### 🗓️ Individual Breakup Table")
         df_piv = df_expenses.copy()
         user_daily_totals = df_piv.groupby(['entry_date', 'user_name']).agg({'amount': 'sum', 'paid_status': 'min'}).reset_index()
@@ -140,12 +149,12 @@ with tabs[2]:
         c1, c2 = st.columns(2)
         with c1:
             st.info("🏸 Badminton")
-            bad_act = st.selectbox("Activity", ["Marvel Court Fee", "Shuttles"], key="ba")
+            bad_act = st.selectbox("Activity", badminton_activities, key="ba")
             bad_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="bt")
             bad_sel = st.multiselect("Select Players", options=all_users, key="bps")
         with c2:
             st.success("🍲 Food")
-            food_act = st.selectbox("Activity", ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering"], key="fa")
+            food_act = st.selectbox("Activity", food_activities, key="fa")
             food_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="ft")
             food_sel = st.multiselect("Select Consumers", options=all_users, key="fps")
         
@@ -183,7 +192,10 @@ with tabs[3]:
     else:
         col_hdr1, col_hdr2 = st.columns([3, 1])
         with col_hdr1:
-            admin_task = st.selectbox("Select Administrative Task", ["Modify Records", "Member Settlement", "Group Payments", "User Management", "Bulk Operations"])
+            admin_task = st.selectbox(
+                "Select Administrative Task", 
+                ["Modify Records", "Categories Management", "Member Settlement", "Group Payments", "User Management", "Bulk Operations"]
+            )
         with col_hdr2:
             st.write(" ") 
             if st.button("Logout", use_container_width=True):
@@ -229,6 +241,101 @@ with tabs[3]:
                                 session.execute(text("DELETE FROM expenses WHERE entry_date = :d"), {"d": db_date_str})
                                 session.commit()
                             st.rerun()
+
+        elif admin_task == "Categories Management":
+            st.subheader("📁 Categories & Activities Management")
+            
+            # Ensure table exists
+            try:
+                with conn.session as session:
+                    session.execute(text("""
+                        CREATE TABLE IF NOT EXISTS category_activities (
+                            id SERIAL PRIMARY KEY,
+                            category VARCHAR(50) NOT NULL,
+                            activity_name VARCHAR(100) NOT NULL UNIQUE
+                        );
+                    """))
+                    session.commit()
+            except Exception as e:
+                st.error(f"Error initializing activities database table: {e}")
+
+            col_cat1, col_cat2 = st.columns(2)
+
+            # --- Badminton Activities Management ---
+            with col_cat1:
+                with st.container(border=True):
+                    st.markdown("### 🏸 Badminton Activities")
+                    
+                    with st.form("add_badminton_act", clear_on_submit=True):
+                        new_bad_act = st.text_input("New Badminton Activity")
+                        if st.form_submit_button("Add Activity"):
+                            if new_bad_act.strip():
+                                try:
+                                    with conn.session as session:
+                                        session.execute(
+                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Badminton', :act) ON CONFLICT DO NOTHING;"),
+                                            {"act": new_bad_act.strip()}
+                                        )
+                                        session.commit()
+                                    st.success(f"Added '{new_bad_act.strip()}'")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+                    
+                    st.write("---")
+                    st.markdown("**Existing Activities:**")
+                    for act in badminton_activities:
+                        a_col1, a_col2 = st.columns([3, 1])
+                        a_col1.write(f"• {act}")
+                        if a_col2.button("🗑️", key=f"del_bad_{act}"):
+                            try:
+                                with conn.session as session:
+                                    session.execute(
+                                        text("DELETE FROM category_activities WHERE category = 'Badminton' AND activity_name = :act;"),
+                                        {"act": act}
+                                    )
+                                    session.commit()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+
+            # --- Food Activities Management ---
+            with col_cat2:
+                with st.container(border=True):
+                    st.markdown("### 🍲 Food Activities")
+                    
+                    with st.form("add_food_act", clear_on_submit=True):
+                        new_food_act = st.text_input("New Food Activity")
+                        if st.form_submit_button("Add Activity"):
+                            if new_food_act.strip():
+                                try:
+                                    with conn.session as session:
+                                        session.execute(
+                                            text("INSERT INTO category_activities (category, activity_name) VALUES ('Food', :act) ON CONFLICT DO NOTHING;"),
+                                            {"act": new_food_act.strip()}
+                                        )
+                                        session.commit()
+                                    st.success(f"Added '{new_food_act.strip()}'")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+
+                    st.write("---")
+                    st.markdown("**Existing Activities:**")
+                    for act in food_activities:
+                        f_col1, f_col2 = st.columns([3, 1])
+                        f_col1.write(f"• {act}")
+                        if f_col2.button("🗑️", key=f"del_food_{act}"):
+                            try:
+                                with conn.session as session:
+                                    session.execute(
+                                        text("DELETE FROM category_activities WHERE category = 'Food' AND activity_name = :act;"),
+                                        {"act": act}
+                                    )
+                                    session.commit()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
 
         elif admin_task == "Member Settlement":
             st.subheader("💰 Member Settlement")
