@@ -10,7 +10,41 @@ st.set_page_config(page_title="Sports & Food Tracker", layout="wide")
 # --- 2. DATABASE CONNECTION ---
 conn = st.connection("postgresql", type="sql")
 
-# --- 3. DATA LOADING & INITIALIZATION ---
+# Default activity lists for fallback
+default_sports = ["Marvel Court Fee", "Shuttles"]
+default_food = ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering"]
+
+# --- 3. DATABASE SCHEMA INITIALIZATION ---
+def init_activities_db():
+    try:
+        with conn.session as session:
+            # Create table if not exists
+            session.execute(text("""
+                CREATE TABLE IF NOT EXISTS category_activities (
+                    id SERIAL PRIMARY KEY,
+                    category VARCHAR(50) NOT NULL,
+                    activity_name VARCHAR(100) NOT NULL
+                );
+            """))
+            
+            # Add Unique Constraint safely
+            session.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'unique_category_activity'
+                    ) THEN
+                        ALTER TABLE category_activities ADD CONSTRAINT unique_category_activity UNIQUE (category, activity_name);
+                    END IF;
+                END $$;
+            """))
+            session.commit()
+    except Exception as e:
+        st.error(f"Error initializing DB schema: {e}")
+
+init_activities_db()
+
+# --- 4. DATA LOADING & INITIALIZATION ---
 @st.cache_data(ttl=0)
 def load_expense_data():
     try:
@@ -31,27 +65,36 @@ def load_participants():
     except:
         return []
 
-def load_activities(category_name, default_list):
+def load_activities(category_name, fallback_list):
     try:
-        df_act = conn.query("SELECT activity_name FROM category_activities WHERE category = :cat ORDER BY activity_name ASC;", params={"cat": category_name}, ttl=0)
-        if not df_act.empty:
-            return df_act['activity_name'].tolist()
-        return default_list
-    except Exception:
-        return default_list
+        # Handles spacing, manual formatting, and casing issues using TRIM and LOWER
+        query = text("""
+            SELECT DISTINCT TRIM(activity_name) as activity_name 
+            FROM category_activities 
+            WHERE LOWER(TRIM(category)) = LOWER(TRIM(:cat)) 
+            ORDER BY activity_name ASC;
+        """)
+        
+        df_act = conn.query(query.text, params={"cat": category_name}, ttl=0)
+        
+        if not df_act.empty and 'activity_name' in df_act.columns:
+            activities = [act for act in df_act['activity_name'].dropna().tolist() if str(act).strip()]
+            if activities:
+                return activities
+        return fallback_list
+    except Exception as e:
+        st.warning(f"Failed to fetch activities for {category_name}: {e}")
+        return fallback_list
 
 df_expenses = load_expense_data()
 saved_participants = load_participants()
 all_users = sorted(list(set(saved_participants + (df_expenses['user_name'].unique().tolist() if not df_expenses.empty else []))))
 
-# Default activities if table is not yet configured
-default_sports = ["Marvel Court Fee", "Shuttles"]
-default_food = ["Orange Bethak", "Food Bethak", "Tea/Snacks", "Mandi", "Other", "Lala Dabar", "Cake Castle", "Family Gathering"]
-
+# Load dynamically from PostgreSQL DB with explicit matching
 sports_activities = load_activities("Sports", default_sports)
 food_activities = load_activities("Food", default_food)
 
-# --- 4. TABS ---
+# --- 5. TABS ---
 tabs = st.tabs([
     "📊 Group Summary", 
     "📋 Daily Ledger", 
@@ -149,12 +192,12 @@ with tabs[2]:
         c1, c2 = st.columns(2)
         with c1:
             st.info("⚽ Sports")
-            sports_act = st.selectbox("Activity", sports_activities, key="sa")
+            sports_act = st.selectbox("Activity", options=sports_activities, key="sa")
             sports_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="st")
             sports_sel = st.multiselect("Select Players", options=all_users, key="sps")
         with c2:
             st.success("🍲 Food")
-            food_act = st.selectbox("Activity", food_activities, key="fa")
+            food_act = st.selectbox("Activity", options=food_activities, key="fa")
             food_total = st.number_input("Total Amount (QAR)", min_value=0.0, step=5.0, key="ft")
             food_sel = st.multiselect("Select Consumers", options=all_users, key="fps")
         
@@ -162,10 +205,12 @@ with tabs[2]:
             entries = []
             if sports_sel and sports_total > 0:
                 share = sports_total / len(sports_sel)
-                for p in sports_sel: entries.append({"d":str(event_date),"u":p,"c":"Sports","a":sports_act,"am":share,"p":0})
+                for p in sports_sel: 
+                    entries.append({"d": str(event_date), "u": p, "c": "Sports", "a": sports_act, "am": share, "p": 0})
             if food_sel and food_total > 0:
                 share = food_total / len(food_sel)
-                for p in food_sel: entries.append({"d":str(event_date),"u":p,"c":"Food","a":food_act,"am":share,"p":0})
+                for p in food_sel: 
+                    entries.append({"d": str(event_date), "u": p, "c": "Food", "a": food_act, "am": share, "p": 0})
             
             if entries:
                 try:
@@ -175,7 +220,8 @@ with tabs[2]:
                         s.commit()
                     st.success("✅ Recorded!")
                     st.rerun()
-                except Exception as e: st.error(e)
+                except Exception as e: 
+                    st.error(e)
 
 # --- TAB 4: ADMIN CONTROL CENTER ---
 with tabs[3]:
@@ -244,21 +290,6 @@ with tabs[3]:
 
         elif admin_task == "Categories Management":
             st.subheader("📁 Categories & Activities Management")
-            
-            # Ensure table exists
-            try:
-                with conn.session as session:
-                    session.execute(text("""
-                        CREATE TABLE IF NOT EXISTS category_activities (
-                            id SERIAL PRIMARY KEY,
-                            category VARCHAR(50) NOT NULL,
-                            activity_name VARCHAR(100) NOT NULL,
-                            CONSTRAINT unique_category_activity UNIQUE (category, activity_name)
-                        );
-                    """))
-                    session.commit()
-            except Exception as e:
-                st.error(f"Error initializing activities database table: {e}")
 
             col_cat1, col_cat2 = st.columns(2)
 
@@ -285,7 +316,7 @@ with tabs[3]:
                                     st.error(f"Error adding activity: {e}")
                     
                     st.write("---")
-                    st.markdown("**Existing Activities:**")
+                    st.markdown("**Existing DB Activities:**")
                     for idx, act in enumerate(sports_activities):
                         a_col1, a_col2 = st.columns([3, 1])
                         a_col1.write(f"• {act}")
@@ -293,7 +324,7 @@ with tabs[3]:
                             try:
                                 with conn.session as session:
                                     session.execute(
-                                        text("DELETE FROM category_activities WHERE category = 'Sports' AND activity_name = :act;"),
+                                        text("DELETE FROM category_activities WHERE LOWER(TRIM(category)) = 'sports' AND LOWER(TRIM(activity_name)) = LOWER(TRIM(:act));"),
                                         {"act": act}
                                     )
                                     session.commit()
@@ -324,7 +355,7 @@ with tabs[3]:
                                     st.error(f"Error adding activity: {e}")
 
                     st.write("---")
-                    st.markdown("**Existing Activities:**")
+                    st.markdown("**Existing DB Activities:**")
                     for idx, act in enumerate(food_activities):
                         f_col1, f_col2 = st.columns([3, 1])
                         f_col1.write(f"• {act}")
@@ -332,7 +363,7 @@ with tabs[3]:
                             try:
                                 with conn.session as session:
                                     session.execute(
-                                        text("DELETE FROM category_activities WHERE category = 'Food' AND activity_name = :act;"),
+                                        text("DELETE FROM category_activities WHERE LOWER(TRIM(category)) = 'food' AND LOWER(TRIM(activity_name)) = LOWER(TRIM(:act));"),
                                         {"act": act}
                                     )
                                     session.commit()
