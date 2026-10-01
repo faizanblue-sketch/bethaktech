@@ -148,7 +148,11 @@ with tabs[0]:
         st.divider()
         g1, g2 = st.columns([1, 2])
         with g1:
-            st.plotly_chart(px.pie(unpaid_only, values='amount', names='category', hole=0.5, title="Expense Split"), use_container_width=True)
+fig_pie = px.pie(unpaid_only, values='amount', names='category', hole=0.5, title="Expense Split")
+            fig_pie.update_layout(margin=dict(l=20, r=20, t=50, b=20),autosize=True)
+            fig_pie.update_traces(automargin=True)
+            st.plotly_chart(fig_pie, use_container_width=True)
+            
         with g2:
             bar_data = []
             temp_sums = unpaid_only.groupby('user_name')['amount'].sum().to_dict()
