@@ -156,6 +156,16 @@ def apply_payment(user, amount, entry_date, activity="Advance Payment"):
         after = open_balance(s, user)
         s.commit()
     return {"before": before, "settled": settled, "after": after}
+
+
+def reconcile_users(users):
+    """Match existing open credit against open dues for each user. Returns {user: amount settled}."""
+    result = {}
+    with conn.session as s:
+        for u in users:
+            result[u] = settle_user(s, u)
+        s.commit()
+    return result
 # <<END CORE>>
 
 
@@ -451,6 +461,33 @@ with tabs[3]:
             st.subheader("💳 Credit / Advance Payment")
             st.caption("The amount first clears the member's oldest open dues (marked ✅ Paid). "
                        "Anything left over stays as credit balance.")
+            if st.session_state.get("flash"):
+                st.success(st.session_state.pop("flash"))
+
+            # Credits that were entered earlier but never matched against open dues
+            credit_open = open_df[open_df["amount"] < 0].groupby("user_name")["amount"].sum().abs()
+            dues_open = open_df[open_df["amount"] > 0].groupby("user_name")["amount"].sum()
+            pending = sorted(set(credit_open.index) & set(dues_open.index))
+            if pending:
+                st.warning("These members hold open credit while dues are still open. "
+                           "Reconcile to mark the dues as paid.")
+                st.dataframe(pd.DataFrame({
+                    "Member": pending,
+                    "Open Dues": [round(dues_open[u], 2) for u in pending],
+                    "Open Credit": [round(credit_open[u], 2) for u in pending],
+                    "Will Be Cleared": [round(min(dues_open[u], credit_open[u]), 2) for u in pending],
+                    "Credit Left": [round(max(credit_open[u] - dues_open[u], 0), 2) for u in pending],
+                }), hide_index=True, use_container_width=True)
+                if st.button("🔄 Reconcile existing credits", type="primary", key="cr_reconcile"):
+                    try:
+                        done = reconcile_users(pending)
+                        st.session_state["flash"] = "Reconciled: " + ", ".join(
+                            f"{u} ({v:.2f} {CURRENCY} cleared)" for u, v in done.items())
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Reconcile failed: {e}")
+                st.divider()
+
             if not all_users:
                 st.info("Add members first.")
             else:
@@ -481,8 +518,6 @@ with tabs[3]:
                         st.rerun()
                     except Exception as e:
                         st.error(f"Could not apply credit: {e}")
-            if st.session_state.get("flash"):
-                st.success(st.session_state.pop("flash"))
 
         # ---- Member Settlement ----
         elif admin_task == "Member Settlement":
